@@ -1,6 +1,7 @@
 /**
  * Shared utility functions and business logic
  */
+import semver from "semver";
 import { VersionType } from "@changesets/types";
 
 const bumpTypes = ["none", "patch", "minor", "major"];
@@ -14,10 +15,38 @@ function getBumpLevel(type: VersionType) {
   return level;
 }
 
-export function shouldUpdateInternalDependencies(
-  minReleaseType: "patch" | "minor",
-  releaseType: VersionType
-) {
+export function shouldUpdateDependencyBasedOnConfig(
+  release: { version: string; type: VersionType },
+  {
+    depVersionRange,
+    depType
+  }: {
+    depVersionRange: string;
+    depType:
+      | "dependencies"
+      | "devDependencies"
+      | "peerDependencies"
+      | "optionalDependencies";
+  },
+  {
+    minReleaseType,
+    onlyUpdatePeerDependentsWhenOutOfRange
+  }: {
+    minReleaseType: "patch" | "minor";
+    onlyUpdatePeerDependentsWhenOutOfRange: boolean;
+  }
+): boolean {
+  if (!semver.satisfies(release.version, depVersionRange)) {
+    // Dependencies leaving semver range should always be updated
+    return true;
+  }
+
   const minLevel = getBumpLevel(minReleaseType);
-  return getBumpLevel(releaseType) >= minLevel;
+  let shouldUpdate = getBumpLevel(release.type) >= minLevel;
+
+  if (depType === "peerDependencies") {
+    shouldUpdate = !onlyUpdatePeerDependentsWhenOutOfRange;
+  }
+
+  return shouldUpdate;
 }

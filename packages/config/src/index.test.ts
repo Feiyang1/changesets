@@ -26,7 +26,11 @@ test("read reads the config", async () => {
     commit: true,
     access: "restricted",
     baseBranch: "master",
-    updateInternalDependencies: "patch"
+    updateInternalDependencies: "patch",
+    ___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH: {
+      onlyUpdatePeerDependentsWhenOutOfRange: false,
+      useCalculatedVersionForSnapshots: false
+    }
   });
 });
 
@@ -36,7 +40,11 @@ let defaults = {
   commit: false,
   access: "restricted",
   baseBranch: "master",
-  updateInternalDependencies: "patch"
+  updateInternalDependencies: "patch",
+  ___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH: {
+    onlyUpdatePeerDependentsWhenOutOfRange: false,
+    useCalculatedVersionForSnapshots: false
+  }
 } as const;
 
 let correctCases = {
@@ -278,6 +286,30 @@ The package \\"pkg-a\\" is in multiple sets of linked packages. Packages can onl
     }).toThrowErrorMatchingInlineSnapshot(`
 "Some errors occurred when validating the changesets config:
 The \`updateInternalDependencies\` option is set as \\"major\\" but can only be 'patch' or 'minor'"
+`);
+  });
+  test("onlyUpdatePeerDependentsWhenOutOfRange non-boolean", () => {
+    expect(() => {
+      unsafeParse({
+        ___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH: {
+          onlyUpdatePeerDependentsWhenOutOfRange: "not true"
+        }
+      });
+    }).toThrowErrorMatchingInlineSnapshot(`
+"Some errors occurred when validating the changesets config:
+The \`onlyUpdatePeerDependentsWhenOutOfRange\` option is set as \\"not true\\" when the only valid values are undefined or a boolean"
+`);
+  });
+  test("useCalculatedVersionForSnapshots non-boolean", () => {
+    expect(() => {
+      unsafeParse({
+        ___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH: {
+          useCalculatedVersionForSnapshots: "not true"
+        }
+      });
+    }).toThrowErrorMatchingInlineSnapshot(`
+"Some errors occurred when validating the changesets config:
+The \`useCalculatedVersionForSnapshots\` option is set as \\"not true\\" when the only valid values are undefined or a boolean"
 `);
   });
 });

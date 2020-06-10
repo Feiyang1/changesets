@@ -22,6 +22,10 @@ let modifiedDefaultConfig: Config = {
   changelog: [changelogPath, null]
 };
 
+let defaultOptions = {
+  snapshot: undefined
+};
+
 beforeEach(() => {
   let i = 0;
   (humanId as jest.Mock<string, []>).mockImplementation(() => {
@@ -95,7 +99,7 @@ describe("running version in a simple project", () => {
   describe("when there are no changeset commits", () => {
     it("should warn if no changeset commits exist", async () => {
       await writeEmptyChangeset(cwd);
-      await versionCommand(cwd, modifiedDefaultConfig);
+      await versionCommand(cwd, defaultOptions, modifiedDefaultConfig);
       // @ts-ignore
       const loggerWarnCalls = warn.mock.calls;
       expect(loggerWarnCalls.length).toEqual(1);
@@ -110,7 +114,7 @@ describe("running version in a simple project", () => {
       await writeChangesets([simpleChangeset2], cwd);
       const spy = jest.spyOn(fs, "writeFile");
 
-      await versionCommand(cwd, modifiedDefaultConfig);
+      await versionCommand(cwd, defaultOptions, modifiedDefaultConfig);
 
       expect(getPkgJSON("pkg-a", spy.mock.calls)).toEqual(
         expect.objectContaining({ name: "pkg-a", version: "1.1.0" })
@@ -126,7 +130,7 @@ describe("running version in a simple project", () => {
     await writeChangesets([simpleChangeset2], cwd2);
     const spy = jest.spyOn(fs, "writeFile");
 
-    await versionCommand(cwd2, {
+    await versionCommand(cwd2, defaultOptions, {
       ...modifiedDefaultConfig,
       linked: [["pkg-a", "pkg-b"]]
     });
@@ -144,7 +148,7 @@ describe("running version in a simple project", () => {
     await writeChangesets([simpleChangeset], cwd2);
     const spy = jest.spyOn(fs, "writeFile");
 
-    await versionCommand(cwd2, modifiedDefaultConfig);
+    await versionCommand(cwd2, defaultOptions, modifiedDefaultConfig);
 
     expect(getPkgJSON("pkg-a", spy.mock.calls)).toEqual(
       expect.objectContaining({ name: "pkg-a", version: "1.1.0" })
@@ -156,7 +160,7 @@ describe("running version in a simple project", () => {
       await writeChangesets([simpleChangeset, simpleChangeset2], cwd);
       const spy = jest.spyOn(fs, "writeFile");
 
-      await versionCommand(cwd, modifiedDefaultConfig);
+      await versionCommand(cwd, defaultOptions, modifiedDefaultConfig);
 
       expect(getPkgJSON("pkg-a", spy.mock.calls)).toEqual(
         expect.objectContaining({ name: "pkg-a", version: "1.1.0" })
@@ -169,7 +173,7 @@ describe("running version in a simple project", () => {
     it("should bump multiple released packages if required", async () => {
       await writeChangesets([simpleChangeset, simpleChangeset2], cwd);
       const spy = jest.spyOn(fs, "writeFile");
-      await versionCommand(cwd, modifiedDefaultConfig);
+      await versionCommand(cwd, defaultOptions, modifiedDefaultConfig);
 
       // first call should be minor bump
       expect(getPkgJSON("pkg-a", spy.mock.calls)).toEqual(
@@ -188,11 +192,59 @@ describe("running version in a simple project", () => {
     });
     it("should delete the changeset files", async () => {
       await writeChangesets([simpleChangeset, simpleChangeset2], cwd);
-      await versionCommand(cwd, modifiedDefaultConfig);
+      await versionCommand(cwd, defaultOptions, modifiedDefaultConfig);
 
       const dirs = await fs.readdir(path.resolve(cwd, ".changeset"));
       expect(dirs.length).toBe(2);
     });
+  });
+});
+
+describe("running version in a simple project with caret dependencies", () => {
+  it("should bump patch version for packages that had prereleases, but dependencies are still in range", async () => {
+    let cwd = f.copy("simple-project-caret-dep");
+    await pre(cwd, { command: "enter", tag: "next" });
+    await writeChangeset(
+      {
+        releases: [{ name: "pkg-b", type: "patch" }],
+        summary: "a very useful summary for the first change"
+      },
+      cwd
+    );
+    await version(cwd, defaultOptions, modifiedDefaultConfig);
+
+    let packages = (await getPackages(cwd))!;
+    expect(packages.packages.map(x => x.packageJson)).toEqual([
+      {
+        dependencies: {
+          "pkg-b": "^1.0.1-next.0"
+        },
+        name: "pkg-a",
+        version: "1.0.1-next.0"
+      },
+      {
+        name: "pkg-b",
+        version: "1.0.1-next.0"
+      }
+    ]);
+
+    await pre(cwd, { command: "exit" });
+    await version(cwd, defaultOptions, modifiedDefaultConfig);
+
+    packages = (await getPackages(cwd))!;
+    expect(packages.packages.map(x => x.packageJson)).toEqual([
+      {
+        dependencies: {
+          "pkg-b": "^1.0.1"
+        },
+        name: "pkg-a",
+        version: "1.0.1"
+      },
+      {
+        name: "pkg-b",
+        version: "1.0.1"
+      }
+    ]);
   });
 });
 
@@ -214,7 +266,7 @@ describe("running version in a simple project with workspace range", () => {
       await writeChangesets([simpleChangeset2], cwd);
       const spy = jest.spyOn(fs, "writeFile");
 
-      await versionCommand(cwd, modifiedDefaultConfig);
+      await versionCommand(cwd, defaultOptions, modifiedDefaultConfig);
 
       expect(getPkgJSON("pkg-a", spy.mock.calls)).toEqual(
         expect.objectContaining({
@@ -225,6 +277,72 @@ describe("running version in a simple project with workspace range", () => {
       );
       expect(getPkgJSON("pkg-b", spy.mock.calls)).toEqual(
         expect.objectContaining({ name: "pkg-b", version: "1.0.1" })
+      );
+    });
+  });
+});
+
+describe("snapshot release", () => {
+  it("should update the packge to unique version no matter the kind of version bump it is", async () => {
+    let cwd = f.copy("simple-project");
+    await writeChangesets([simpleChangeset2], cwd);
+    const spy = jest.spyOn(fs, "writeFile");
+    await versionCommand(
+      cwd,
+      {
+        snapshot: "exprimental"
+      },
+      {
+        ...modifiedDefaultConfig,
+        commit: false
+      }
+    );
+    expect(getPkgJSON("pkg-a", spy.mock.calls)).toEqual(
+      expect.objectContaining({
+        name: "pkg-a",
+        version: expect.stringContaining("0.0.0-exprimental-")
+      })
+    );
+
+    expect(getPkgJSON("pkg-b", spy.mock.calls)).toEqual(
+      expect.objectContaining({
+        name: "pkg-b",
+        version: expect.stringContaining("0.0.0-exprimental-")
+      })
+    );
+  });
+
+  describe("useCalculatedVersionForSnapshots: true", () => {
+    it("should update packages using calculated version", async () => {
+      let cwd = f.copy("simple-project");
+      await writeChangesets([simpleChangeset2], cwd);
+      const spy = jest.spyOn(fs, "writeFile");
+      await versionCommand(
+        cwd,
+        {
+          snapshot: "exprimental"
+        },
+        {
+          ...modifiedDefaultConfig,
+          commit: false,
+          ___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH: {
+            onlyUpdatePeerDependentsWhenOutOfRange: false,
+            useCalculatedVersionForSnapshots: true
+          }
+        }
+      );
+      expect(getPkgJSON("pkg-a", spy.mock.calls)).toEqual(
+        expect.objectContaining({
+          name: "pkg-a",
+          version: expect.stringContaining("1.1.0-exprimental-")
+        })
+      );
+
+      expect(getPkgJSON("pkg-b", spy.mock.calls)).toEqual(
+        expect.objectContaining({
+          name: "pkg-b",
+          version: expect.stringContaining("1.0.1-exprimental-")
+        })
       );
     });
   });
@@ -241,7 +359,7 @@ describe("pre", () => {
       },
       cwd
     );
-    await version(cwd, modifiedDefaultConfig);
+    await version(cwd, defaultOptions, modifiedDefaultConfig);
     let packages = (await getPackages(cwd))!;
     expect(packages.packages.map(x => x.packageJson)).toEqual([
       {
@@ -264,7 +382,7 @@ describe("pre", () => {
       cwd
     );
 
-    await version(cwd, modifiedDefaultConfig);
+    await version(cwd, defaultOptions, modifiedDefaultConfig);
     packages = (await getPackages(cwd))!;
     expect(packages.packages.map(x => x.packageJson)).toEqual([
       {
@@ -286,7 +404,7 @@ describe("pre", () => {
       },
       cwd
     );
-    await version(cwd, modifiedDefaultConfig);
+    await version(cwd, defaultOptions, modifiedDefaultConfig);
     packages = (await getPackages(cwd))!;
     expect(packages.packages.map(x => x.packageJson)).toEqual([
       {
@@ -308,7 +426,7 @@ describe("pre", () => {
       },
       cwd
     );
-    await version(cwd, modifiedDefaultConfig);
+    await version(cwd, defaultOptions, modifiedDefaultConfig);
     packages = (await getPackages(cwd))!;
     expect(packages.packages.map(x => x.packageJson)).toMatchInlineSnapshot(
       [
@@ -341,7 +459,7 @@ describe("pre", () => {
     `
     );
     await pre(cwd, { command: "exit" });
-    await version(cwd, modifiedDefaultConfig);
+    await version(cwd, defaultOptions, modifiedDefaultConfig);
     packages = (await getPackages(cwd))!;
     expect(packages.packages.map(x => x.packageJson)).toEqual([
       {
@@ -436,7 +554,7 @@ describe("pre", () => {
       cwd
     );
 
-    await version(cwd, modifiedDefaultConfig);
+    await version(cwd, defaultOptions, modifiedDefaultConfig);
     let packages = (await getPackages(cwd))!;
     expect(packages.packages.map(x => x.packageJson)).toEqual([
       {
@@ -466,7 +584,7 @@ describe("pre", () => {
       },
       cwd
     );
-    await version(cwd, modifiedDefaultConfig);
+    await version(cwd, defaultOptions, modifiedDefaultConfig);
     packages = (await getPackages(cwd))!;
 
     expect(packages.packages.map(x => x.packageJson)).toEqual([
@@ -496,7 +614,7 @@ describe("pre", () => {
       },
       cwd
     );
-    await version(cwd, modifiedDefaultConfig);
+    await version(cwd, defaultOptions, modifiedDefaultConfig);
     let packages = (await getPackages(cwd))!;
 
     expect(packages.packages.map(x => x.packageJson)).toEqual([
@@ -519,7 +637,7 @@ describe("pre", () => {
       },
       cwd
     );
-    await version(cwd, modifiedDefaultConfig);
+    await version(cwd, defaultOptions, modifiedDefaultConfig);
     packages = (await getPackages(cwd))!;
 
     expect(packages.packages.map(x => x.packageJson)).toEqual([
@@ -547,7 +665,7 @@ describe("pre", () => {
       },
       cwd
     );
-    await version(cwd, linkedConfig);
+    await version(cwd, defaultOptions, linkedConfig);
     let packages = (await getPackages(cwd))!;
 
     expect(packages.packages.map(x => x.packageJson)).toEqual([
@@ -570,7 +688,7 @@ describe("pre", () => {
       },
       cwd
     );
-    await version(cwd, linkedConfig);
+    await version(cwd, defaultOptions, linkedConfig);
     packages = (await getPackages(cwd))!;
 
     expect(packages.packages.map(x => x.packageJson)).toEqual([
@@ -591,7 +709,7 @@ describe("pre", () => {
       },
       cwd
     );
-    await version(cwd, linkedConfig);
+    await version(cwd, defaultOptions, linkedConfig);
     packages = (await getPackages(cwd))!;
     expect(packages.packages.map(x => x.packageJson)).toEqual([
       {
@@ -611,7 +729,7 @@ describe("pre", () => {
       },
       cwd
     );
-    await version(cwd, linkedConfig);
+    await version(cwd, defaultOptions, linkedConfig);
     packages = (await getPackages(cwd))!;
     expect(packages.packages.map(x => x.packageJson)).toEqual([
       {
@@ -636,7 +754,7 @@ describe("pre", () => {
     );
 
     await pre(cwd, { command: "enter", tag: "next" });
-    await version(cwd, modifiedDefaultConfig);
+    await version(cwd, defaultOptions, modifiedDefaultConfig);
     let packages = (await getPackages(cwd))!;
 
     expect(packages.packages.map(x => x.packageJson)).toEqual([
@@ -658,7 +776,7 @@ describe("pre", () => {
       },
       cwd
     );
-    await version(cwd, modifiedDefaultConfig);
+    await version(cwd, defaultOptions, modifiedDefaultConfig);
     packages = (await getPackages(cwd))!;
 
     expect(packages.packages.map(x => x.packageJson)).toEqual([

@@ -39,7 +39,8 @@ async function getCommitThatAddsChangeset(changesetId: string, cwd: string) {
 export default async function applyReleasePlan(
   releasePlan: ReleasePlan,
   packages: Packages,
-  config: Config = defaultConfig
+  config: Config = defaultConfig,
+  snapshot?: string | boolean
 ) {
   let cwd = packages.root.dir;
 
@@ -73,7 +74,7 @@ export default async function applyReleasePlan(
     cwd
   );
 
-  if (releasePlan.preState !== undefined) {
+  if (releasePlan.preState !== undefined && snapshot === undefined) {
     if (releasePlan.preState.mode === "exit") {
       await fs.remove(path.join(cwd, ".changeset", "pre.json"));
     } else {
@@ -92,11 +93,12 @@ export default async function applyReleasePlan(
 
   // iterate over releases updating packages
   let finalisedRelease = releaseWithChangelogs.map(release => {
-    return versionPackage(
-      release,
-      versionsToUpdate,
-      config.updateInternalDependencies
-    );
+    return versionPackage(release, versionsToUpdate, {
+      updateInternalDependencies: config.updateInternalDependencies,
+      onlyUpdatePeerDependentsWhenOutOfRange:
+        config.___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH
+          .onlyUpdatePeerDependentsWhenOutOfRange
+    });
   });
 
   let prettierConfig = await prettier.resolveConfig(cwd);
@@ -209,7 +211,12 @@ async function getNewChangelogEntry(
         moddedChangesets,
         getChangelogFuncs,
         changelogOpts,
-        config.updateInternalDependencies
+        {
+          updateInternalDependencies: config.updateInternalDependencies,
+          onlyUpdatePeerDependentsWhenOutOfRange:
+            config.___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH
+              .onlyUpdatePeerDependentsWhenOutOfRange
+        }
       );
 
       return {

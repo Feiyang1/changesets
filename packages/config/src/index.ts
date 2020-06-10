@@ -13,7 +13,11 @@ export let defaultWrittenConfig = {
   linked: [] as ReadonlyArray<ReadonlyArray<string>>,
   access: "restricted",
   baseBranch: "master",
-  updateInternalDependencies: "patch"
+  updateInternalDependencies: "patch",
+  ___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH: {
+    onlyUpdatePeerDependentsWhenOutOfRange: false,
+    useCalculatedVersionForSnapshots: false
+  }
 } as const;
 
 function getNormalisedChangelogOption(
@@ -151,6 +155,37 @@ export let parse = (json: WrittenConfig, packages: Packages): Config => {
       )} but can only be 'patch' or 'minor'`
     );
   }
+
+  if (json.___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH !== undefined) {
+    const {
+      onlyUpdatePeerDependentsWhenOutOfRange,
+      useCalculatedVersionForSnapshots
+    } = json.___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH;
+    if (
+      onlyUpdatePeerDependentsWhenOutOfRange !== undefined &&
+      typeof onlyUpdatePeerDependentsWhenOutOfRange !== "boolean"
+    ) {
+      messages.push(
+        `The \`onlyUpdatePeerDependentsWhenOutOfRange\` option is set as ${JSON.stringify(
+          onlyUpdatePeerDependentsWhenOutOfRange,
+          null,
+          2
+        )} when the only valid values are undefined or a boolean`
+      );
+    }
+    if (
+      useCalculatedVersionForSnapshots !== undefined &&
+      typeof useCalculatedVersionForSnapshots !== "boolean"
+    ) {
+      messages.push(
+        `The \`useCalculatedVersionForSnapshots\` option is set as ${JSON.stringify(
+          useCalculatedVersionForSnapshots,
+          null,
+          2
+        )} when the only valid values are undefined or a boolean`
+      );
+    }
+  }
   if (messages.length) {
     throw new ValidationError(
       `Some errors occurred when validating the changesets config:\n` +
@@ -179,7 +214,29 @@ export let parse = (json: WrittenConfig, packages: Packages): Config => {
     updateInternalDependencies:
       json.updateInternalDependencies === undefined
         ? defaultWrittenConfig.updateInternalDependencies
-        : json.updateInternalDependencies
+        : json.updateInternalDependencies,
+
+    ___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH: {
+      onlyUpdatePeerDependentsWhenOutOfRange:
+        json.___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH === undefined ||
+        json.___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH
+          .onlyUpdatePeerDependentsWhenOutOfRange === undefined
+          ? defaultWrittenConfig
+              .___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH
+              .onlyUpdatePeerDependentsWhenOutOfRange
+          : json.___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH
+              .onlyUpdatePeerDependentsWhenOutOfRange,
+
+      useCalculatedVersionForSnapshots:
+        json.___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH === undefined ||
+        json.___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH
+          .useCalculatedVersionForSnapshots === undefined
+          ? defaultWrittenConfig
+              .___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH
+              .useCalculatedVersionForSnapshots
+          : json.___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH
+              .useCalculatedVersionForSnapshots
+    }
   };
   return config;
 };

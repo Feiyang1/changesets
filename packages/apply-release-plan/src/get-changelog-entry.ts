@@ -2,7 +2,7 @@ import { ChangelogFunctions, NewChangesetWithCommit } from "@changesets/types";
 
 import { ModCompWithPackage } from "@changesets/types";
 import startCase from "lodash.startcase";
-import { shouldUpdateInternalDependencies } from "./utils";
+import { shouldUpdateDependencyBasedOnConfig } from "./utils";
 
 type ChangelogLines = {
   major: Array<Promise<string>>;
@@ -28,7 +28,13 @@ export default async function generateMarkdown(
   changesets: NewChangesetWithCommit[],
   changelogFuncs: ChangelogFunctions,
   changelogOpts: any,
-  updateInternalDependencies: "patch" | "minor"
+  {
+    updateInternalDependencies,
+    onlyUpdatePeerDependentsWhenOutOfRange
+  }: {
+    updateInternalDependencies: "patch" | "minor";
+    onlyUpdatePeerDependentsWhenOutOfRange: boolean;
+  }
 ) {
   if (release.type === "none") return null;
 
@@ -52,15 +58,27 @@ export default async function generateMarkdown(
   });
 
   let dependentReleases = releases.filter(rel => {
-    const isDependency =
-      release.packageJson.dependencies &&
-      release.packageJson.dependencies[rel.name];
-    const isPeerDependency =
-      release.packageJson.peerDependencies &&
-      release.packageJson.peerDependencies[rel.name];
+    const dependencyVersionRange = release.packageJson.dependencies
+      ? release.packageJson.dependencies[rel.name]
+      : null;
+    const peerDependencyVersionRange = release.packageJson.peerDependencies
+      ? release.packageJson.peerDependencies[rel.name]
+      : null;
+
+    const versionRange = dependencyVersionRange || peerDependencyVersionRange;
     return (
-      (isDependency || isPeerDependency) &&
-      shouldUpdateInternalDependencies(updateInternalDependencies, rel.type)
+      versionRange &&
+      shouldUpdateDependencyBasedOnConfig(
+        { type: rel.type, version: rel.newVersion },
+        {
+          depVersionRange: versionRange,
+          depType: dependencyVersionRange ? "dependencies" : "peerDependencies"
+        },
+        {
+          minReleaseType: updateInternalDependencies,
+          onlyUpdatePeerDependentsWhenOutOfRange
+        }
+      )
     );
   });
 
